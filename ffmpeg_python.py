@@ -11,7 +11,16 @@ vid_dir = path.relpath(
 #     "Dev\\tripartito\\clips"
 # )
 
-vid_list = os.listdir(vid_dir)
+
+
+# dir_list = os.listdir(vid_dir)
+
+ref_dict = {
+    "shot": "bleep",
+    "episode": "blerp",
+    "season": "herp",
+    "sequence": "yarps"
+}
 
 def pad_zero(num, pad):
     num = str(num)
@@ -19,46 +28,100 @@ def pad_zero(num, pad):
         num = "0" + num
     return num
 
-def dir_dict(dir_list):
-    shots = {}
+
+def shot_string(shot):
+    return  f'monster_S{shot["season"]}E{shot["episode"]}_SQ{shot["sequence"]}_SH{shot["shot"]}'
+
+
+def filename_breakdown(dir):
+    dir_list = os.listdir(dir)
+    shots = []
     for vid in dir_list:
+        if os.path.isdir(vid):
+            continue
+
         se = re.search(r'S\d{2}E\d{2}', vid, re.IGNORECASE)
         sq = re.search(r'SQ\d{4}', vid, re.IGNORECASE)
         sh = re.search(r'SH\d{4}', vid, re.IGNORECASE)
         ver = re.search(r'V\d{3}', vid, re.IGNORECASE)
         
-        if not se or not sq or not sh or not ver:
+        if not se or not sq or not sh:
             continue
         
-        show = vid.split("_")[0]
-        ext = vid.split(".")[len(vid.split("."))-1]
-        season= vid[se.start(0)+1:se.start(0)+3]
-        episode = vid[se.start(0)+4:se.start(0)+6]
-        sequence = vid[sq.start(0)+2:sq.start(0)+6]
-        shot = vid[sh.start(0)+2:sh.start(0)+6] 
-        version = int(vid[ver.start(0)+1:ver.end(0)])
-        shot_string = f'S{season}E{episode}_SQ{sequence}_SH{shot}'
-        
-        if shot_string not in shots:
-            shots[shot_string] = [version]
-        else:
-            shots[shot_string].append(version)
+        pcs = {
+            "ext": vid.split(".")[len(vid.split("."))-1],
+            "season": vid[se.start(0)+1:se.start(0)+3],
+            "episode": vid[se.start(0)+4:se.start(0)+6],
+            "sequence": vid[sq.start(0)+2:sq.start(0)+6],
+            "shot": vid[sh.start(0)+2:sh.start(0)+6],
+        }
+
+        if ver:
+            pcs["version"] = vid[ver.start(0)+1:ver.end(0)]
+
+        shots.append(pcs)
     
     return shots
 
-def latest_ver(shot_dict):
-    shot_vers = []
-    for shot, ver in shot_dict.items():
-        ult_ver = f'{shot}_V{pad_zero(sorted(ver)[len(ver)-1],3)}'
-        shot_vers.append(ult_ver)
+
+def ult_ver(dir_list):
+    latest_ver = {}
+    for item in dir_list:
+        if "season" not in item:
+            continue
+        
+        key = shot_string(item)
+        if key not in latest_ver:
+            latest_ver[key] = {
+                "version": item["version"],
+                "extension": item["ext"]
+            }
+        elif int(item["version"]) > int(latest_ver[key]["version"]):
+            latest_ver[key]["version"] = item["version"]
+            latest_ver[key]["extension"] = item["ext"]
+        else:
+            continue    
+
+    return latest_ver
+
+
+def file_list(ver_dict):
+    shot_list = []
+    for key, value in ver_dict.items():
+        ver = pad_zero(value["version"], 3)
+        ext = value["extension"]
+        shot_list.append(
+            f'{key}_V{ver}.{ext}'
+        )
+    return shot_list
+
+print(
+    file_list(
+    ult_ver(
+    filename_breakdown(
+    vid_dir
+    )
+    )
+    )
+)
+
+
+
+# print(dir_dict(dir_list))
+
+# def latest_ver(shot_dict):
+#     shot_vers = []
+#     for shot, ver in shot_dict.items():
+#         ult_ver = f'{shot}_V{pad_zero(sorted(ver)[len(ver)-1],3)}'
+#         shot_vers.append(ult_ver)
 
 
     
-    return shot_vers
+#     return shot_vers
 
 
 
-print(latest_ver(dir_dict(vid_list)))
+# print(latest_ver(dir_dict(dir_list)))
 
 
 
