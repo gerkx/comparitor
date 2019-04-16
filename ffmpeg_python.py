@@ -29,11 +29,11 @@ def pad_zero(num, pad):
     return num
 
 
-def shot_string(shot):
+def create_shot_string(shot):
     return  f'monster_S{shot["season"]}E{shot["episode"]}_SQ{shot["sequence"]}_SH{shot["shot"]}'
 
 
-def filename_breakdown(dir):
+def breakdown_name(dir):
     dir_list = os.listdir(dir)
     shots = []
     for vid in dir_list:
@@ -64,13 +64,13 @@ def filename_breakdown(dir):
     return shots
 
 
-def ult_ver(dir_list):
+def find_ult_ver(dir_list):
     latest_ver = {}
     for item in dir_list:
         if "season" not in item:
             continue
         
-        key = shot_string(item)
+        key = create_shot_string(item)
         if key not in latest_ver:
             latest_ver[key] = {
                 "version": item["version"],
@@ -85,7 +85,7 @@ def ult_ver(dir_list):
     return latest_ver
 
 
-def file_list(ver_dict):
+def create_file_list(ver_dict):
     shot_list = []
     for key, value in ver_dict.items():
         ver = pad_zero(value["version"], 3)
@@ -96,9 +96,9 @@ def file_list(ver_dict):
     return shot_list
 
 print(
-    file_list(
-    ult_ver(
-    filename_breakdown(
+    create_file_list(
+    find_ult_ver(
+    breakdown_name(
     vid_dir
     )
     )
