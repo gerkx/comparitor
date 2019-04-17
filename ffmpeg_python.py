@@ -1,26 +1,17 @@
 import ffmpeg, re, os
 import os.path as path
-# import os.listdir as listdir
 
 vid_dir = path.relpath(
     "..\\tripartito\\clips"
 )
+
 # vid_dir = path.abspath(
 #     "Z:\\Cloud\\Dropbox (BigBangBoxSL)\\PROYECTOS\\"
 #     "My preschool monster serie\\PRODUCCION\\Editorial\\"
 #     "Dev\\tripartito\\clips"
 # )
 
-
-
-# dir_list = os.listdir(vid_dir)
-
-ref_dict = {
-    "shot": "bleep",
-    "episode": "blerp",
-    "season": "herp",
-    "sequence": "yarps"
-}
+output = path.join(vid_dir, 'test.mp4')
 
 def pad_zero(num, pad):
     num = str(num)
@@ -69,7 +60,6 @@ def find_ult_ver(dir_list):
     for item in dir_list:
         if "season" not in item:
             continue
-        
         key = create_shot_string(item)
         if key not in latest_ver:
             latest_ver[key] = {
@@ -95,37 +85,27 @@ def create_file_list(ver_dict):
         )
     return shot_list
 
-print(
+
+def create_concat_stream(shot_list):
+    input_list = []
+    for shot in shot_list:
+        shot_path = path.join(vid_dir, shot)
+        input_list.append(ffmpeg.input(shot_path))
+    return ffmpeg.concat(*input_list)
+
+concat_stream = (
+    create_concat_stream(
     create_file_list(
     find_ult_ver(
     breakdown_name(
-    vid_dir
-    )
-    )
-    )
+    vid_dir    
+)))))
+
+(
+    concat_stream
+    .output(output)
+    .run()
 )
-
-
-
-# print(dir_dict(dir_list))
-
-# def latest_ver(shot_dict):
-#     shot_vers = []
-#     for shot, ver in shot_dict.items():
-#         ult_ver = f'{shot}_V{pad_zero(sorted(ver)[len(ver)-1],3)}'
-#         shot_vers.append(ult_ver)
-
-
-    
-#     return shot_vers
-
-
-
-# print(latest_ver(dir_dict(dir_list)))
-
-
-
-
 
 
 # vid001 = ffmpeg.input(path.join(vid_dir, "Clip002_V002.mp4"))
