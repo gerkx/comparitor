@@ -1,11 +1,14 @@
 import ffmpeg, re, os
 import os.path as path
 
-vid_dir = path.relpath(
-    "..\\tripartito\\clips"
+vid_dir01 = path.relpath(
+    "..\\tripartito\\clips\\set01"
+)
+vid_dir02 = path.relpath(
+    "..\\tripartito\\clips\\set02"
 )
 
-output = path.join(vid_dir, 'test.mp4')
+output = path.join(vid_dir01, 'testB.mp4')
 
 def pad_zero(num, pad):
     num = str(num)
@@ -76,27 +79,53 @@ class Bin:
         for dict_key in _dict:
             _list.append(_dict[dict_key][key])
         return _list
-
     
-    def get_stream_specs(self):
+    def set_stream_specs(self):
         for key in self.shot_dict:
             self.shot_dict[key]["specs"] = ffmpeg.probe(
                 self.shot_dict[key]["filename"]
                 )
         return self
+    
+    def match_ref(self, ref_obj):
+        _dict = self.shot_dict
+        ref_dict = ref_obj.shot_dict
+        # print("ref_keys:", ref_keys)
+        for key in ref_dict:
+            if key not in self.shot_dict:
+                missing = ref_dict[key]
+                box = missing["stream"].drawbox(0,0,1920,1080, color='black@0.75', thickness=960)
+                missing["stream"] = box
+                self.shot_dict[key] = missing
+                # print(self.shot_dict[key]["stream"])
+
+                # self.shot_dict[key]["stream"].drawbox(
+                #     50,50,120,120, color='red', thickness=5
+                # )
+        return self
+
+                
+            
+
 
 
         
 
 
-bin = Bin(vid_dir)
+bin = Bin(vid_dir01)
+ref_bin = Bin(vid_dir02)
 
-print(
+
+
+shotlist = (
     bin
-    .get_stream_specs()
-    .shot_dict["01_01_0030"]["specs"]["streams"][0]["duration"]
+    .match_ref(ref_bin)
+    .latest_list("stream")
 )
 
+# print(shotlist)
+
+ffmpeg.concat(*shotlist).output(output).run()
 
 
     
@@ -172,7 +201,7 @@ def create_file_list(ver_dict):
 def create_concat_stream(shot_list):
     input_list = []
     for shot in shot_list:
-        shot_path = path.join(vid_dir, shot)
+        shot_path = path.join(vid_dir01, shot)
         input_list.append(ffmpeg.input(shot_path))
     return ffmpeg.concat(*input_list)
 
