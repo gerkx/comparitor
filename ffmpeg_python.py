@@ -5,12 +5,6 @@ vid_dir = path.relpath(
     "..\\tripartito\\clips"
 )
 
-# vid_dir = path.abspath(
-#     "Z:\\Cloud\\Dropbox (BigBangBoxSL)\\PROYECTOS\\"
-#     "My preschool monster serie\\PRODUCCION\\Editorial\\"
-#     "Dev\\tripartito\\clips"
-# )
-
 output = path.join(vid_dir, 'test.mp4')
 
 def pad_zero(num, pad):
@@ -25,39 +19,39 @@ class Bin:
         self.dir = dir
         self.dir_list = os.listdir(self.dir)
         self.shot_dict = self.latest_ver_dict()
+        self.file_list = self.latest_list("filename")
+        self.stream_list = self.latest_list("stream")
         
 
-    @staticmethod
-    def extract_shot_components(shot):
+    def extract_shot_components(self, shot):
         se = re.search(r'S\d{2}E\d{2}', shot, re.IGNORECASE)
         sq = re.search(r'SQ\d{4}', shot, re.IGNORECASE)
         sh = re.search(r'SH\d{4}', shot, re.IGNORECASE)
         _ver = re.search(r'v\d{1}', shot, re.IGNORECASE)
 
-
+        if not se or not sq or not sh:
+            return None
 
         if _ver:
-            ver_start = shot[_ver.end(0)]
-            ver = ver_start
+            ver_start = _ver.end(0)-1
+            ver = ""
             idx = 0
-            # while str.isdigit(shot[ver_start + idx]):
-            #     ver += shot[ver_start + idx]
-            #     idx += 1
-            # ver = int(ver)
+            while str.isdigit(shot[ver_start + idx]):                
+                ver += shot[ver_start + idx]
+                idx += 1
+            ver = int(ver)
         else:
             ver = 1
-
-        if not se or not sq or not sh:
-            return
-     
-        else:
-            return {
-                "season": shot[se.start(0)+1:se.start(0)+3],
-                "episode": shot[se.start(0)+4:se.start(0)+6],
-                "sequence": shot[sq.start(0)+2:sq.start(0)+6],
-                "shot": shot[sh.start(0)+2:sh.start(0)+6],
-                "ver": ver
-            }
+    
+        return {
+            "season": shot[se.start(0)+1:se.start(0)+3],
+            "episode": shot[se.start(0)+4:se.start(0)+6],
+            "sequence": shot[sq.start(0)+2:sq.start(0)+6],
+            "shot": shot[sh.start(0)+2:sh.start(0)+6],
+            "ver": ver,
+            "filename": path.join(self.dir, shot),
+            "stream": ffmpeg.input(path.join(self.dir, shot)),
+        }
 
     
     def latest_ver_dict(self):
@@ -65,43 +59,43 @@ class Bin:
         _dict = {}
         for shot in _dir:
             shot_dict = self.extract_shot_components(shot)
+            if not shot_dict:
+                continue
             shot_key = f'{shot_dict["season"]}_{shot_dict["episode"]}_{shot_dict["shot"]}'
             if not shot_key in _dict:
                 _dict[shot_key] = shot_dict
             if shot_dict["ver"] > _dict[shot_key]["ver"]:
-                _dict[shot_key]["ver"] = shot_dict["ver"]
+                _dict[shot_key].update(shot_dict)
+        
         return _dict
 
+    
+    def latest_list(self, key):
+        _dict = self.shot_dict
+        _list = []
+        for dict_key in _dict:
+            _list.append(_dict[dict_key][key])
+        return _list
 
-    # class Shot:
+    
+    def get_stream_specs(self):
+        for key in self.shot_dict:
+            self.shot_dict[key]["specs"] = ffmpeg.probe(
+                self.shot_dict[key]["filename"]
+                )
+        return self
 
-    #     # stream = None
 
-    #     def __init__(self, sea, epi, seq, shot, ver=None):
-    #         self.sea = sea
-    #         self.epi = epi
-    #         self.seq = seq
-    #         self.shot = shot
-    #         if ver:
-    #             self.ver = ver
-    #         else:
-    #             self.ver = 1
-
-    #     @classmethod
-    #     def from_shot_dict(cls, shot_dict):
-    #         sea = shot_dict["season"]
-    #         epi = shot_dict["episode"]
-    #         seq = shot_dict["sequence"]
-    #         shot = shot_dict["shot"]
-    #         ver = shot_dict["ver"]
-
-    #         return cls(sea, epi, seq, shot, ver)
+        
 
 
 bin = Bin(vid_dir)
-# list = bin.latest_shot_ver()
 
-print(bin.shot_dict)
+print(
+    bin
+    .get_stream_specs()
+    .shot_dict["01_01_0030"]["specs"]["streams"][0]["duration"]
+)
 
 
 
@@ -133,6 +127,7 @@ def breakdown_name(dir):
             "episode": vid[se.start(0)+4:se.start(0)+6],
             "sequence": vid[sq.start(0)+2:sq.start(0)+6],
             "shot": vid[sh.start(0)+2:sh.start(0)+6],
+            "filename": vid
         }
 
         if ver:
