@@ -22,9 +22,6 @@ class Bin:
         self.dir = dir
         self.dir_list = os.listdir(self.dir)
         self.shot_dict = self.latest_ver_dict()
-        self.file_list = self.latest_list("filename")
-        self.stream_list = self.latest_list("stream")
-        
 
     def extract_shot_components(self, shot):
         se = re.search(r'S\d{2}E\d{2}', shot, re.IGNORECASE)
@@ -56,6 +53,30 @@ class Bin:
             "stream": ffmpeg.input(path.join(self.dir, shot)),
         }
 
+    def fill_gaps(self, ref_obj):
+        _dict = self.shot_dict
+        ref_dict = ref_obj.shot_dict
+        for key in ref_dict:
+            if key not in self.shot_dict:
+                missing = ref_dict[key]
+                box = missing["stream"].drawbox(0,0,1920,1080, color='black@0.75', thickness=960)
+                missing["stream"] = box
+                self.shot_dict[key] = missing
+        return self
+
+    def latest_list(self, key):
+        _dict = self.shot_dict
+        _list = []
+        for dict_key in _dict:
+            _list.append(_dict[dict_key][key])
+        return _list
+    
+    def file_list(self):
+        return self.latest_list("filename")
+
+    def stream_list(self):
+        return self.latest_list("stream")
+
     
     def latest_ver_dict(self):
         _dir = self.dir_list
@@ -68,17 +89,8 @@ class Bin:
             if not shot_key in _dict:
                 _dict[shot_key] = shot_dict
             if shot_dict["ver"] > _dict[shot_key]["ver"]:
-                _dict[shot_key].update(shot_dict)
-        
+                _dict[shot_key].update(shot_dict)        
         return _dict
-
-    
-    def latest_list(self, key):
-        _dict = self.shot_dict
-        _list = []
-        for dict_key in _dict:
-            _list.append(_dict[dict_key][key])
-        return _list
     
     def set_stream_specs(self):
         for key in self.shot_dict:
@@ -86,46 +98,46 @@ class Bin:
                 self.shot_dict[key]["filename"]
                 )
         return self
-    
-    def match_ref(self, ref_obj):
-        _dict = self.shot_dict
-        ref_dict = ref_obj.shot_dict
-        # print("ref_keys:", ref_keys)
-        for key in ref_dict:
-            if key not in self.shot_dict:
-                missing = ref_dict[key]
-                box = missing["stream"].drawbox(0,0,1920,1080, color='black@0.75', thickness=960)
-                missing["stream"] = box
-                self.shot_dict[key] = missing
-                # print(self.shot_dict[key]["stream"])
 
-                # self.shot_dict[key]["stream"].drawbox(
-                #     50,50,120,120, color='red', thickness=5
-                # )
+    def trim_excess(self, ref):
+        dict_keys = self.shot_dict.keys()
+        ref_shots = self.key_shot_num(ref.shot_dict.keys())
+        first_shot = ref_shots[0]
+        ult_shot = ref_shots[len(ref_shots)-1]
+        excess_keys = []
+        for i, key in enumerate(dict_keys):
+            curr_shot = self.key_shot_num(dict_keys)[i]
+            if curr_shot < first_shot or curr_shot > ult_shot:
+                excess_keys.append(key)
+        for key in excess_keys:
+            self.shot_dict.pop(key)
         return self
+    
+    @staticmethod
+    def key_shot_num(key_list):
+        shots = []
+        for key in key_list:
+            shots.append(int(key.split("_")[2]))
 
-                
-            
+        return sorted(shots)
 
 
+'''
+Testing implementations below
+'''
 
-        
-
-
-bin = Bin(vid_dir01)
+shot_bin = Bin(vid_dir01)
 ref_bin = Bin(vid_dir02)
 
-
-
 shotlist = (
-    bin
-    .match_ref(ref_bin)
-    .latest_list("stream")
+    shot_bin
+    .trim_excess(ref_bin)
+    .file_list()
 )
 
-# print(shotlist)
+print(shotlist)
 
-ffmpeg.concat(*shotlist).output(output).run()
+# ffmpeg.concat(*shotlist).output(output).run()
 
 
     
