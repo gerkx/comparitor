@@ -1,6 +1,33 @@
 import ffmpeg, re, os
 import os.path as path
 
+def latest_layout(xport_path):
+    xport_dir = os.listdir(xport_path)
+    xport_list = []
+    for xport in xport_dir:
+        _ver = re.search(r'v\d{1}', xport, re.IGNORECASE)
+        if _ver:
+            ver_start = _ver.end(0)-1
+            ver = ""
+            idx = 0
+            while str.isdigit(xport[ver_start + idx]):                
+                ver += xport[ver_start + idx]
+                idx += 1
+            ver = int(ver)
+        else:
+            ver = 1
+        xport_list.append({'name': xport, 'ver': ver})
+    latest_ver = (
+        sorted(
+            list(map(lambda x: x['ver'], xport_list)),
+            reverse=True
+        )[0]
+    )
+    return list(filter(
+        lambda x: x['ver'] == latest_ver, xport_list
+    ))[0]['name']
+    
+
 
 def pad_zero(num, pad):
     num = str(num)
@@ -9,12 +36,29 @@ def pad_zero(num, pad):
     return num
 
 class Bin:
-
     def __init__(self, dir):
         self.dir = dir
         self.dir_list = os.listdir(self.dir)
         self.shot_dict = self.latest_ver_dict()
 
+    def build_canvas(self):
+        return self.pad_vid(1728,720,0,0)
+
+    def create_audio_streams(self):
+        for key in self.shot_dict:
+            self.shot_dict[key]['audio'] = (
+                self.shot_dict[key]['stream']['a']
+            )
+        return self
+
+    def create_overlay(self, super_stream, x_pos, y_pos):
+        for key in self.shot_dict:
+            self.shot_dict[key]['stream'] = (
+                self.shot_dict[key]['stream']
+                .overlay(super_stream, x_pos, y_pos)
+            )
+        return self
+       
     def extract_shot_components(self, shot):
         se = re.search(r'S\d{2}E\d{2}', shot, re.IGNORECASE)
         sq = re.search(r'SQ\d{4}', shot, re.IGNORECASE)
@@ -42,7 +86,7 @@ class Bin:
             "shot": shot[sh.start(0)+2:sh.start(0)+6],
             "ver": ver,
             "filename": path.join(self.dir, shot),
-            "stream": ffmpeg.input(path.join(self.dir, shot)).filter("scale", size="hd1080"),
+            "stream": ffmpeg.input(path.join(self.dir, shot))
         }
 
     def fill_gaps(self, ref_obj):
@@ -51,13 +95,6 @@ class Bin:
         for key in ref_dict:
             if key not in self.shot_dict:
                 missing_dict = ref_dict[key]
-                # print(missing_dict.keys())
-                # missing_shot = ffmpeg.probe(
-                #     missing_dict["filename"])["streams"][0]
-                # dur = missing_shot["duration"]
-                # width = missing_shot["width"]
-                # height = missing_shot["height"]
-                # filler = ffmpeg.input(slug, t=dur)
                 fill_dict = {
                     "season": missing_dict["season"],
                     "episode": missing_dict["episode"],
@@ -70,16 +107,8 @@ class Bin:
                         .drawbox(0,0,1920,1080, color="black@.9", thickness=1920)
                         .drawtext(text="Plano Pendiente", fontcolor="white@.35", x=720, y=540, fontsize=64, fontfile=font)
                 }
-                # fill_dict["stream"]
-                # print(fill_dict["stream"])
                 _dict[key] = fill_dict
-                # print(ref_dict[key]["stream"])
-                # print("==============================")
-                # print(_dict[key]["stream"])
 
-        
-        
-        
         sorted_dict = {}
         for key in sorted(_dict.keys()):
             sorted_dict[key] = _dict[key]
@@ -106,7 +135,34 @@ class Bin:
             if shot_dict["ver"] > _dict[shot_key]["ver"]:
                 _dict[shot_key].update(shot_dict)        
         return _dict
+
+    def pad_vid(self, width, height, x_pos, y_pos):
+        for key in self.shot_dict:
+            self.shot_dict[key]['stream'] = (
+                self.shot_dict[key]['stream'].filter(
+                    'pad',
+                    w=width,
+                    h=height,
+                    x=x_pos,
+                    y=y_pos
+                )
+            )
+        return self
     
+    def scale_animation(self):
+        return self.scale_vid(1152, 648)
+    
+    def scale_vid(self, width, height):
+        for key in self.shot_dict:
+            self.shot_dict[key]['stream'] = (
+                self.shot_dict[key]['stream'].filter(
+                    'scale',
+                    w=width,
+                    h=height
+                )
+            )
+        return self
+        
     def set_stream_specs(self):
         for key in self.shot_dict:
             self.shot_dict[key]["specs"] = ffmpeg.probe(
@@ -128,11 +184,48 @@ class Bin:
             self.shot_dict.pop(key)
         return self
 
+    def trim_keys(self, ref):
+        dict_keys = self.shot_dict.keys()
+        ref_shots = self.key_shot_num(ref.shot_dict.keys())
+        first_shot = ref_shots[0]
+        ult_shot = ref_shots[len(ref_shots)-1]
+        head_keys = []
+        tail_keys = []
+        body_keys = []
+        for i, key in enumerate(dict_keys):
+            curr_shot = self.key_shot_num(dict_keys)[i]
+            if curr_shot < first_shot:
+                head_keys.append(key)
+            elif curr_shot > ult_shot:
+                tail_keys.append(key)
+            else:
+                body_keys.append(key)
+        return {'head': head_keys, 'tail': tail_keys, 'body': body_keys}
+    
+    def trim_points(self, keys):
+        in_pt = 0
+        body_dur = 0
+        for key in keys['head']:
+            in_pt += float(
+                self.shot_dict[key]['specs']
+                ['streams'][0]['duration']
+            )
+        for key in keys['body']:
+            body_dur += float(
+                self.shot_dict[key]['specs']
+                ['streams'][0]['duration']
+            )
+        return {'in': in_pt, 'out': in_pt + body_dur}
+        
+        
     def file_list(self):
         return self.latest_list("filename")
 
     def stream_list(self):
         return self.latest_list("stream")
+
+    def audio_list(self):
+        return self.latest_list('audio')
     
     @staticmethod
     def key_shot_num(key_list):
@@ -151,155 +244,74 @@ if __name__ == "__main__":
 
     animatic_dir = path.join(clip_dir, "animatic")
     animation_dir = path.join(clip_dir, "animation")
+    layout_dir = path.abspath("E:\\Dropbox (BigBangBoxSL)\\PROYECTOS\\My preschool monster serie\\PRODUCCION\\Layout\\Episodios\\EP15\\xport")
 
     font = path.relpath(".\\fonts\\ProximaNova-Regular.otf")
 
-    output = path.join(clip_dir, 'boop.mp4')
+    output = path.join(clip_dir, 'trifecta.mp4')
 
-    slug = path.relpath(".\\img\\slug.mp4")
-
+    layout = path.join(layout_dir, latest_layout(layout_dir))
+    
     animation_bin = Bin(animation_dir)
     animatic_bin = (
         Bin(animatic_dir)
         .trim_excess(animation_bin)
+        .scale_vid(576,324)
     )
+    audio_bin = (
+        Bin(animatic_dir)
+        .trim_excess(animation_bin)
+        .create_audio_streams()
+        .audio_list()
+    )
+
 
     animation_bin = (
         animation_bin
         .fill_gaps(animatic_bin)
         .set_stream_specs()
+        .scale_animation()
+        .pad_vid(1728,720,0,0)
         .stream_list()
     )
 
-    animatic_bin = animatic_bin.stream_list()
+    animatic_bin = (
+        animatic_bin
+        .stream_list()
+    )
 
-    print("animatic list:  ", animatic_bin)
-    print("=========================")
-    print("animation list: ", animation_bin)
-
-    ffmpeg.concat(*animation_bin).output(output).run()
-
-# ffmpeg.input(slug, t="30", s="1920x1080").output(output).run()
-# test = ffmpeg.input(slug, t=2).filter("scale", 640, 360).output(output).run()
-
-# ffmpeg.input(color="blue", width=640, t=20).output(output).run()
+    animatic_stream = ffmpeg.concat(*animatic_bin, v=1, a=0)
 
 
-# def create_shot_string(shot):
-#     return  f'monster_S{shot["season"]}E{shot["episode"]}_SQ{shot["sequence"]}_SH{shot["shot"]}'
+    pic_ref = Bin(animatic_dir)
+    excess_shots = pic_ref.trim_keys(Bin(animation_dir))
+    trim = (
+        pic_ref
+        .set_stream_specs()
+        .trim_points(excess_shots)
+    )
+    layout_stream = (
+        ffmpeg
+        .input(layout)
+        .filter('crop', w=1257, h=707, x=6, y=186)
+        .filter('scale', w=576, h=324)
+        .trim(start=trim['in'], end=trim['out'])
+        .filter('setpts', 0)
+    )
 
+    animation_stream = (
+        ffmpeg
+        .concat(*animation_bin, v=1, a=0)
+        .overlay(animatic_stream, x=1152, y=0)
+    )
 
-# def breakdown_name(dir):
-#     dir_list = os.listdir(dir)
-#     shots = []
-#     for vid in dir_list:
-#         if os.path.isdir(vid):
-#             continue
-
-#         se = re.search(r'S\d{2}E\d{2}', vid, re.IGNORECASE)
-#         sq = re.search(r'SQ\d{4}', vid, re.IGNORECASE)
-#         sh = re.search(r'SH\d{4}', vid, re.IGNORECASE)
-#         ver = re.search(r'V\d{3}', vid, re.IGNORECASE)
-        
-#         if not se or not sq or not sh:
-#             continue
-        
-#         pcs = {
-#             "ext": vid.split(".")[len(vid.split("."))-1],
-#             "season": vid[se.start(0)+1:se.start(0)+3],
-#             "episode": vid[se.start(0)+4:se.start(0)+6],
-#             "sequence": vid[sq.start(0)+2:sq.start(0)+6],
-#             "shot": vid[sh.start(0)+2:sh.start(0)+6],
-#             "filename": vid
-#         }
-
-#         if ver:
-#             pcs["version"] = vid[ver.start(0)+1:ver.end(0)]
-
-#         shots.append(pcs)
+    combo_stream = (
+        animation_stream
+        .overlay(layout_stream, x=1152, y=325)
+    )
     
-#     return shots
-
-
-# def find_ult_ver(dir_list):
-#     latest_ver = {}
-#     for item in dir_list:
-#         if "season" not in item:
-#             continue
-#         key = create_shot_string(item)
-#         if key not in latest_ver:
-#             latest_ver[key] = {
-#                 "version": item["version"],
-#                 "extension": item["ext"]
-#             }
-#         elif int(item["version"]) > int(latest_ver[key]["version"]):
-#             latest_ver[key]["version"] = item["version"]
-#             latest_ver[key]["extension"] = item["ext"]
-#         else:
-#             continue    
-
-#     return latest_ver
-
-
-# def create_file_list(ver_dict):
-#     shot_list = []
-#     for key, value in ver_dict.items():
-#         ver = pad_zero(value["version"], 3)
-#         ext = value["extension"]
-#         shot_list.append(
-#             f'{key}_V{ver}.{ext}'
-#         )
-#     return shot_list
-
-
-# def create_concat_stream(shot_list):
-#     input_list = []
-#     for shot in shot_list:
-#         shot_path = path.join(vid_dir01, shot)
-#         input_list.append(ffmpeg.input(shot_path))
-#     return ffmpeg.concat(*input_list)
-
-# concat_stream = (
-#     create_concat_stream(
-#     create_file_list(
-#     find_ult_ver(
-#     breakdown_name(
-#     vid_dir    
-# )))))
-
-# (
-#     concat_stream
-#     .output(output)
-#     .run()
-# )
-
-
-# vid001 = ffmpeg.input(path.join(vid_dir, "Clip002_V002.mp4"))
-# vid002 = (
-#     ffmpeg
-#     .input(path.join(vid_dir, "Clip002.mp4"))
-#     .filter("scale", w=960, h=540)
-#     )
-
-
-# vid001_probe = ffmpeg.probe(vid001, cmd='ffprobe')
-
-# print(vid001_probe)
-
-
-# vid_out = path.join(vid_dir, "Concat_Clip.mp4")
-
-# def vid_concat():
-#     (
-#         vid001
-#         .filter("scale", w=960, h=540)
-#         .filter("pad", w=1920)
-#         .overlay(
-#             vid002,
-#             x=960
-#         )
-#         .output(vid_out)
-#         .run()
-#     )
-
-# vid_concat()
+    audio_stream = ffmpeg.concat(*audio_bin, v=0, a=1)
+    vid_stream = combo_stream
+    
+    out = ffmpeg.output(vid_stream, audio_stream, output)
+    out.run()
