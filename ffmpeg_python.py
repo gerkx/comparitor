@@ -1,14 +1,6 @@
 import ffmpeg, re, os
 import os.path as path
 
-vid_dir01 = path.relpath(
-    "..\\tripartito\\clips\\set01"
-)
-vid_dir02 = path.relpath(
-    "..\\tripartito\\clips\\set02"
-)
-
-output = path.join(vid_dir01, 'testB.mp4')
 
 def pad_zero(num, pad):
     num = str(num)
@@ -50,7 +42,7 @@ class Bin:
             "shot": shot[sh.start(0)+2:sh.start(0)+6],
             "ver": ver,
             "filename": path.join(self.dir, shot),
-            "stream": ffmpeg.input(path.join(self.dir, shot)),
+            "stream": ffmpeg.input(path.join(self.dir, shot)).filter("scale", size="hd1080"),
         }
 
     def fill_gaps(self, ref_obj):
@@ -58,10 +50,40 @@ class Bin:
         ref_dict = ref_obj.shot_dict
         for key in ref_dict:
             if key not in self.shot_dict:
-                missing = ref_dict[key]
-                box = missing["stream"].drawbox(0,0,1920,1080, color='black@0.75', thickness=960)
-                missing["stream"] = box
-                self.shot_dict[key] = missing
+                missing_dict = ref_dict[key]
+                # print(missing_dict.keys())
+                # missing_shot = ffmpeg.probe(
+                #     missing_dict["filename"])["streams"][0]
+                # dur = missing_shot["duration"]
+                # width = missing_shot["width"]
+                # height = missing_shot["height"]
+                # filler = ffmpeg.input(slug, t=dur)
+                fill_dict = {
+                    "season": missing_dict["season"],
+                    "episode": missing_dict["episode"],
+                    "sequence": missing_dict["sequence"],
+                    "shot": missing_dict["shot"],
+                    "ver": 0,
+                    "filename": missing_dict["filename"],
+                    "stream": ffmpeg.input(missing_dict["filename"])
+                        .filter("scale", size="hd1080")
+                        .drawbox(0,0,1920,1080, color="black@.9", thickness=1920)
+                        .drawtext(text="Plano Pendiente", fontcolor="white@.35", x=720, y=540, fontsize=64, fontfile=font)
+                }
+                # fill_dict["stream"]
+                # print(fill_dict["stream"])
+                _dict[key] = fill_dict
+                # print(ref_dict[key]["stream"])
+                # print("==============================")
+                # print(_dict[key]["stream"])
+
+        
+        
+        
+        sorted_dict = {}
+        for key in sorted(_dict.keys()):
+            sorted_dict[key] = _dict[key]
+        self.shot_dict = sorted_dict
         return self
 
     def latest_list(self, key):
@@ -70,13 +92,6 @@ class Bin:
         for dict_key in _dict:
             _list.append(_dict[dict_key][key])
         return _list
-    
-    def file_list(self):
-        return self.latest_list("filename")
-
-    def stream_list(self):
-        return self.latest_list("stream")
-
     
     def latest_ver_dict(self):
         _dir = self.dir_list
@@ -112,6 +127,12 @@ class Bin:
         for key in excess_keys:
             self.shot_dict.pop(key)
         return self
+
+    def file_list(self):
+        return self.latest_list("filename")
+
+    def stream_list(self):
+        return self.latest_list("stream")
     
     @staticmethod
     def key_shot_num(key_list):
@@ -125,97 +146,118 @@ class Bin:
 '''
 Testing implementations below
 '''
+if __name__ == "__main__":
+    clip_dir = path.relpath("..\\tripartito\\clips")
 
-shot_bin = Bin(vid_dir01)
-ref_bin = Bin(vid_dir02)
+    animatic_dir = path.join(clip_dir, "animatic")
+    animation_dir = path.join(clip_dir, "animation")
 
-shotlist = (
-    shot_bin
-    .trim_excess(ref_bin)
-    .file_list()
-)
+    font = path.relpath(".\\fonts\\ProximaNova-Regular.otf")
 
-print(shotlist)
+    output = path.join(clip_dir, 'boop.mp4')
 
-# ffmpeg.concat(*shotlist).output(output).run()
+    slug = path.relpath(".\\img\\slug.mp4")
+
+    animation_bin = Bin(animation_dir)
+    animatic_bin = (
+        Bin(animatic_dir)
+        .trim_excess(animation_bin)
+    )
+
+    animation_bin = (
+        animation_bin
+        .fill_gaps(animatic_bin)
+        .set_stream_specs()
+        .stream_list()
+    )
+
+    animatic_bin = animatic_bin.stream_list()
+
+    print("animatic list:  ", animatic_bin)
+    print("=========================")
+    print("animation list: ", animation_bin)
+
+    ffmpeg.concat(*animation_bin).output(output).run()
+
+# ffmpeg.input(slug, t="30", s="1920x1080").output(output).run()
+# test = ffmpeg.input(slug, t=2).filter("scale", 640, 360).output(output).run()
+
+# ffmpeg.input(color="blue", width=640, t=20).output(output).run()
 
 
-    
+# def create_shot_string(shot):
+#     return  f'monster_S{shot["season"]}E{shot["episode"]}_SQ{shot["sequence"]}_SH{shot["shot"]}'
 
 
-def create_shot_string(shot):
-    return  f'monster_S{shot["season"]}E{shot["episode"]}_SQ{shot["sequence"]}_SH{shot["shot"]}'
+# def breakdown_name(dir):
+#     dir_list = os.listdir(dir)
+#     shots = []
+#     for vid in dir_list:
+#         if os.path.isdir(vid):
+#             continue
 
-
-def breakdown_name(dir):
-    dir_list = os.listdir(dir)
-    shots = []
-    for vid in dir_list:
-        if os.path.isdir(vid):
-            continue
-
-        se = re.search(r'S\d{2}E\d{2}', vid, re.IGNORECASE)
-        sq = re.search(r'SQ\d{4}', vid, re.IGNORECASE)
-        sh = re.search(r'SH\d{4}', vid, re.IGNORECASE)
-        ver = re.search(r'V\d{3}', vid, re.IGNORECASE)
+#         se = re.search(r'S\d{2}E\d{2}', vid, re.IGNORECASE)
+#         sq = re.search(r'SQ\d{4}', vid, re.IGNORECASE)
+#         sh = re.search(r'SH\d{4}', vid, re.IGNORECASE)
+#         ver = re.search(r'V\d{3}', vid, re.IGNORECASE)
         
-        if not se or not sq or not sh:
-            continue
+#         if not se or not sq or not sh:
+#             continue
         
-        pcs = {
-            "ext": vid.split(".")[len(vid.split("."))-1],
-            "season": vid[se.start(0)+1:se.start(0)+3],
-            "episode": vid[se.start(0)+4:se.start(0)+6],
-            "sequence": vid[sq.start(0)+2:sq.start(0)+6],
-            "shot": vid[sh.start(0)+2:sh.start(0)+6],
-            "filename": vid
-        }
+#         pcs = {
+#             "ext": vid.split(".")[len(vid.split("."))-1],
+#             "season": vid[se.start(0)+1:se.start(0)+3],
+#             "episode": vid[se.start(0)+4:se.start(0)+6],
+#             "sequence": vid[sq.start(0)+2:sq.start(0)+6],
+#             "shot": vid[sh.start(0)+2:sh.start(0)+6],
+#             "filename": vid
+#         }
 
-        if ver:
-            pcs["version"] = vid[ver.start(0)+1:ver.end(0)]
+#         if ver:
+#             pcs["version"] = vid[ver.start(0)+1:ver.end(0)]
 
-        shots.append(pcs)
+#         shots.append(pcs)
     
-    return shots
+#     return shots
 
 
-def find_ult_ver(dir_list):
-    latest_ver = {}
-    for item in dir_list:
-        if "season" not in item:
-            continue
-        key = create_shot_string(item)
-        if key not in latest_ver:
-            latest_ver[key] = {
-                "version": item["version"],
-                "extension": item["ext"]
-            }
-        elif int(item["version"]) > int(latest_ver[key]["version"]):
-            latest_ver[key]["version"] = item["version"]
-            latest_ver[key]["extension"] = item["ext"]
-        else:
-            continue    
+# def find_ult_ver(dir_list):
+#     latest_ver = {}
+#     for item in dir_list:
+#         if "season" not in item:
+#             continue
+#         key = create_shot_string(item)
+#         if key not in latest_ver:
+#             latest_ver[key] = {
+#                 "version": item["version"],
+#                 "extension": item["ext"]
+#             }
+#         elif int(item["version"]) > int(latest_ver[key]["version"]):
+#             latest_ver[key]["version"] = item["version"]
+#             latest_ver[key]["extension"] = item["ext"]
+#         else:
+#             continue    
 
-    return latest_ver
-
-
-def create_file_list(ver_dict):
-    shot_list = []
-    for key, value in ver_dict.items():
-        ver = pad_zero(value["version"], 3)
-        ext = value["extension"]
-        shot_list.append(
-            f'{key}_V{ver}.{ext}'
-        )
-    return shot_list
+#     return latest_ver
 
 
-def create_concat_stream(shot_list):
-    input_list = []
-    for shot in shot_list:
-        shot_path = path.join(vid_dir01, shot)
-        input_list.append(ffmpeg.input(shot_path))
-    return ffmpeg.concat(*input_list)
+# def create_file_list(ver_dict):
+#     shot_list = []
+#     for key, value in ver_dict.items():
+#         ver = pad_zero(value["version"], 3)
+#         ext = value["extension"]
+#         shot_list.append(
+#             f'{key}_V{ver}.{ext}'
+#         )
+#     return shot_list
+
+
+# def create_concat_stream(shot_list):
+#     input_list = []
+#     for shot in shot_list:
+#         shot_path = path.join(vid_dir01, shot)
+#         input_list.append(ffmpeg.input(shot_path))
+#     return ffmpeg.concat(*input_list)
 
 # concat_stream = (
 #     create_concat_stream(
