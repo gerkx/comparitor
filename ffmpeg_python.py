@@ -58,7 +58,82 @@ class Bin:
                 .overlay(super_stream, x_pos, y_pos)
             )
         return self
-       
+
+    def draw_dur(self):
+        for key in self.shot_dict:
+            dur = str(int(float(self.shot_dict[key]['specs']
+                ['streams'][0]['duration'])*25))
+            self.shot_dict[key]['stream'] = (
+                self.shot_dict[key]['stream']
+                .drawtext(
+                    text="dur",
+                    fontcolor='0xe5e5e5',
+                    x=1200, y=670,
+                    fontsize=30,
+                    fontfile=font
+                )
+                .drawtext(
+                    text=dur, 
+                    fontcolor='0xe5e5e5', 
+                    x=1245, y=665, 
+                    fontsize=37, 
+                    fontfile=font)
+            )
+        return self
+    
+    def draw_frame(self):
+        for key in self.shot_dict:
+            self.shot_dict[key]['stream'] = (
+                self.shot_dict[key]['stream']
+                .drawtext(
+                    escape_text=False,
+                    text= "%{n}",start_number=1001, 
+                    fontcolor='0xe5e5e5', 
+                    x=1550, y=665, 
+                    fontsize=37, 
+                    fontfile=font)
+            )
+        return self
+    
+    def draw_name(self):
+        return self.draw_text('name', 75, 665, 37)
+
+    def draw_text(self, subkey, x_pos=50, y_pos=50, size=64):
+        for key in self.shot_dict:
+            content = self.shot_dict[key][subkey]
+            self.shot_dict[key]['stream'] = (
+                self.shot_dict[key]['stream']
+                .drawtext(
+                    text=content, 
+                    fontcolor='0xe5e5e5', 
+                    x=x_pos, y=y_pos, 
+                    fontsize=size, 
+                    fontfile=font)
+            )
+        return self
+
+    def draw_ver(self):
+        for key in self.shot_dict:
+            ver = pad_zero(str(self.shot_dict[key]["ver"]),3)
+            self.shot_dict[key]['stream'] = (
+                self.shot_dict[key]['stream']
+                .drawtext(
+                    text="ver",
+                    fontcolor='0xe5e5e5',
+                    x=700, y=672,
+                    fontsize=30,
+                    fontfile=font
+                )
+                .drawtext(
+                    text=ver, 
+                    fontcolor='0xe5e5e5', 
+                    x=743, y=665, 
+                    fontsize=37, 
+                    fontfile=font)
+                )
+        return self
+
+    
     def extract_shot_components(self, shot):
         se = re.search(r'S\d{2}E\d{2}', shot, re.IGNORECASE)
         sq = re.search(r'SQ\d{4}', shot, re.IGNORECASE)
@@ -79,11 +154,16 @@ class Bin:
         else:
             ver = 1
     
+        sea = shot[se.start(0)+1:se.start(0)+3]
+        epi = shot[se.start(0)+4:se.start(0)+6]
+        seq = shot[sq.start(0)+2:sq.start(0)+6]
+        sh = shot[sh.start(0)+2:sh.start(0)+6]
         return {
-            "season": shot[se.start(0)+1:se.start(0)+3],
-            "episode": shot[se.start(0)+4:se.start(0)+6],
-            "sequence": shot[sq.start(0)+2:sq.start(0)+6],
-            "shot": shot[sh.start(0)+2:sh.start(0)+6],
+            "season": sea,
+            "episode": epi,
+            "sequence": seq,
+            "shot": sh,
+            "name": f'monster_S{sea}E{epi}_SQ{seq}_SH{sh}',
             "ver": ver,
             "filename": path.join(self.dir, shot),
             "stream": ffmpeg.input(path.join(self.dir, shot))
@@ -101,11 +181,16 @@ class Bin:
                     "sequence": missing_dict["sequence"],
                     "shot": missing_dict["shot"],
                     "ver": 0,
+                    "name": missing_dict["name"],
                     "filename": missing_dict["filename"],
                     "stream": ffmpeg.input(missing_dict["filename"])
                         .filter("scale", size="hd1080")
                         .drawbox(0,0,1920,1080, color="black@.9", thickness=1920)
-                        .drawtext(text="Plano Pendiente", fontcolor="white@.35", x=720, y=540, fontsize=64, fontfile=font)
+                        .drawtext(
+                            text="Plano Pendiente", 
+                            fontcolor="white@.35", 
+                            x=720, y=540, 
+                            fontsize=64, fontfile=font)
                 }
                 _dict[key] = fill_dict
 
@@ -148,6 +233,9 @@ class Bin:
                 )
             )
         return self
+    
+    def scale_animatic(self):
+        return self.scale_vid(576, 324)
     
     def scale_animation(self):
         return self.scale_vid(1152, 648)
@@ -217,7 +305,6 @@ class Bin:
             )
         return {'in': in_pt, 'out': in_pt + body_dur}
         
-        
     def file_list(self):
         return self.latest_list("filename")
 
@@ -248,7 +335,7 @@ if __name__ == "__main__":
 
     font = path.relpath(".\\fonts\\ProximaNova-Regular.otf")
 
-    output = path.join(clip_dir, 'trifecta.mp4')
+    output = path.join(clip_dir, 'trifectaB.mp4')
 
     layout = path.join(layout_dir, latest_layout(layout_dir))
     
@@ -256,7 +343,7 @@ if __name__ == "__main__":
     animatic_bin = (
         Bin(animatic_dir)
         .trim_excess(animation_bin)
-        .scale_vid(576,324)
+        .scale_animatic()
     )
     audio_bin = (
         Bin(animatic_dir)
@@ -272,6 +359,10 @@ if __name__ == "__main__":
         .set_stream_specs()
         .scale_animation()
         .pad_vid(1728,720,0,0)
+        .draw_name()
+        .draw_ver()
+        .draw_dur()
+        .draw_frame()
         .stream_list()
     )
 
@@ -296,7 +387,7 @@ if __name__ == "__main__":
         .filter('crop', w=1257, h=707, x=6, y=186)
         .filter('scale', w=576, h=324)
         .trim(start=trim['in'], end=trim['out'])
-        .filter('setpts', 0)
+        .filter('setpts', 'PTS-STARTPTS')
     )
 
     animation_stream = (
